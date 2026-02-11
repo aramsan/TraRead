@@ -6,12 +6,15 @@
 //
 
 import SwiftUI
+import Translation // Import Translation framework for .translationTask
 
 struct ContentView: View {
     @EnvironmentObject var viewModel: TraReadViewModel
+    // Removed @State private var translationConfiguration: TranslationSession.Configuration? = nil
 
     // Color Palette from Design Doc
     let primaryColor = Color(hex: "FFD700") // Tiger Gold
+    let secondaryColor = Color(hex: "FF8C00") // Accent Orange - New
     let surfaceColor = Color(hex: "121212") // Almost Black
     let backgroundColor = Color(hex: "FFFBE6") // Warm Off-White
 
@@ -43,27 +46,89 @@ struct ContentView: View {
                     .fontWeight(.bold)
                     .foregroundColor(surfaceColor)
                     .multilineTextAlignment(.center)
-                    .padding()
+                    .padding(.horizontal) // Apply horizontal padding to English sentence
+                
+                if !viewModel.japaneseTranslation.isEmpty {
+                    Text(viewModel.japaneseTranslation)
+                        .font(.title2)
+                        .foregroundColor(secondaryColor) // Apply secondary color
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal) // Apply horizontal padding to Japanese translation
+                        .padding(.top, 5)
+                }
+
+                Button("Next") { // New Next button
+                    print("ContentView: Next button tapped.") // Added print statement
+                    viewModel.nextSentence()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(primaryColor)
+                .foregroundColor(surfaceColor)
+                .padding(.top, 10)
+                .disabled(viewModel.isSpeaking) // Disable while speaking
+
 
                 Spacer()
 
-                // Hidden button to capture Enter key for next sentence
-                Button("") {
-                    if !viewModel.isSpeaking { // Only advance if not currently speaking
-                        viewModel.nextSentence()
-                    }
-                }
-                .keyboardShortcut(.return, modifiers: [])
-                .hidden() // Keep it hidden
+                // Removed hidden button to capture Enter key for next sentence
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity) // Make VStack fill available space
         }
         .onAppear {
             // Optional: Process initial text if any, or just show welcome message
         }
+        .onChange(of: viewModel.translationTrigger) { oldValue, newValue in
+            print("ContentView: onChange - translationTrigger changed to: \(newValue ?? "nil")")
+            if let textToTranslate = newValue {
+                // Ensure availability of translation service
+                guard #available(macOS 12.0, iOS 15.0, *) else {
+                    viewModel.japaneseTranslation = "Translation not available on this OS version."
+                    return
+                }
+                
+                // Define source and target languages directly
+                let sourceLanguage = Locale.Language(identifier: "en-US")
+                let targetLanguage = Locale.Language(identifier: "ja-JP")
+                
+                // Then immediately create and run the Task
+                Task {
+                    do {
+                        // Initialize TranslationSession using the correct initializer signature
+                        let session = TranslationSession(
+                            installedSource: sourceLanguage,
+                            target: targetLanguage
+                        )
+                        print("ContentView: translationTask (triggered by onChange) - Attempting to translate: '\(textToTranslate)'")
+                        let response = try await session.translate(textToTranslate)
+                        print("ContentView: translationTask (triggered by onChange) - Translation successful. TargetText: '\(response.targetText)'")
+                        
+                        await MainActor.run { [weak viewModel] in
+                            viewModel?.japaneseTranslation = response.targetText // Direct assignment
+                            viewModel?.speakJapaneseTranslation()
+                            print("ContentView: translationTask (triggered by onChange) - ViewModel updated and Japanese speech initiated.")
+                        }
+                    } catch {
+                        await MainActor.run { [weak viewModel] in
+                            viewModel?.japaneseTranslation = "Translation error: \(error.localizedDescription)"
+                            viewModel?.isSpeaking = false // Stop speaking if translation fails
+                            viewModel?.currentSpeakingLanguage = .none
+                            print("ContentView: translationTask (triggered by onChange) - Translation error: \(error.localizedDescription)")
+                        }
+                    }
+                    await MainActor.run { [weak viewModel] in
+                        viewModel?.translationTrigger = nil // Reset original trigger
+                        print("ContentView: translationTask (triggered by onChange) - translationTrigger reset to nil.")
+                    }
+                }
+            } else {
+                print("ContentView: onChange - translationTrigger is nil, no translation task triggered.")
+            }
+        }
+        // Removed .translationTask modifier, replaced by direct Task in onChange
     }
 }
 
 #Preview {
     ContentView()
+        .environmentObject(TraReadViewModel()) // Provide a ViewModel for preview
 }
