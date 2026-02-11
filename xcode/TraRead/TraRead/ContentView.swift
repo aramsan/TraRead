@@ -57,18 +57,31 @@ struct ContentView: View {
                         .padding(.top, 5)
                 }
 
-                Button("Next") { // New Next button
-                    print("ContentView: Next button tapped.") // Added print statement
-                    viewModel.nextSentence()
+                // New HStack for navigation buttons
+                HStack {
+                    Button("Prev") {
+                        print("ContentView: Prev button tapped.")
+                        viewModel.prevSentence()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(primaryColor)
+                    .foregroundColor(surfaceColor)
+                    .disabled(viewModel.isSpeaking || viewModel.currentSentenceIndex == 0) // Disable if speaking or at first sentence
+
+                    Spacer() // Pushes Prev and Next buttons apart
+
+                    Button("Next") {
+                        print("ContentView: Next button tapped.")
+                        viewModel.nextSentence()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(primaryColor)
+                    .foregroundColor(surfaceColor)
+                    .disabled(viewModel.isSpeaking || viewModel.currentSentenceIndex == viewModel.sentences.count - 1) // Disable if speaking or at last sentence
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(primaryColor)
-                .foregroundColor(surfaceColor)
-                .padding(.top, 10)
-                .disabled(viewModel.isSpeaking) // Disable while speaking
+                .padding(.horizontal) // Add horizontal padding to the HStack
+                .padding(.bottom, 20) // Add padding from the bottom of the screen
 
-
-                Spacer()
 
                 // Removed hidden button to capture Enter key for next sentence
             }

@@ -146,6 +146,29 @@ class TraReadViewModel: NSObject, ObservableObject {
         }
     }
     
+    // Goes back to the previous sentence and speaks it.
+    func prevSentence() {
+        print("prevSentence: Starting...")
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+            print("prevSentence: Stopped previous speech.")
+        }
+        
+        japaneseTranslation = "" // Clear previous translation
+        translationTrigger = nil // Clear trigger
+        
+        if currentSentenceIndex > 0 {
+            currentSentenceIndex -= 1
+            currentSentence = sentences[currentSentenceIndex]
+            print("prevSentence: Moving to previous English sentence: '\(currentSentence)'")
+            speakCurrentSentence()
+        } else {
+            print("prevSentence: Already at the first sentence. Cannot go back further.")
+            // Optionally, re-speak the current (first) sentence if desired
+            speakCurrentSentence()
+        }
+    }
+    
     // Resets the view model state.
     func reset() {
         print("reset: Resetting view model state.")
