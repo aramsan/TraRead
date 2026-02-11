@@ -42,14 +42,27 @@ class TraReadViewModel: NSObject, ObservableObject {
     }
     
     // Processes the input text, splits it into sentences, and updates the UI.
-    func processInputText() {
+    func processInputText(loadedText: String? = nil) { // Added optional loadedText parameter
         print("processInputText: Starting...")
         isProcessing = true
         sentences = []
         currentSentenceIndex = 0
         japaneseTranslation = "" // Clear previous translation
         translationTrigger = nil // Clear trigger
+
+        if let loadedText = loadedText {
+            self.inputText = loadedText // Update inputText with loaded content
+            print("processInputText: Loaded text from file. New inputText: \(self.inputText.prefix(50))...")
+        }
         
+        // Only process if inputText is not empty
+        guard !inputText.isEmpty else {
+            currentSentence = "No text to process. Please enter text or load a file."
+            isProcessing = false
+            print("processInputText: No text to process.")
+            return
+        }
+
         tokenizer.string = inputText
         // NLTokenizer doesn't directly return a simple array, so we enumerate
         tokenizer.enumerateTokens(in: inputText.startIndex..<inputText.endIndex) { tokenRange, _ in
@@ -64,7 +77,7 @@ class TraReadViewModel: NSObject, ObservableObject {
             currentSentence = firstSentence
             speakCurrentSentence()
         } else {
-            currentSentence = "No sentences found. Please enter some text."
+            currentSentence = "No sentences found in the provided text."
         }
         isProcessing = false
         print("processInputText: Finished. currentSentence: \(currentSentence)")

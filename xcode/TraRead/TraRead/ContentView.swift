@@ -7,6 +7,8 @@
 
 import SwiftUI
 import Translation // Import Translation framework for .translationTask
+import AppKit // Import AppKit for NSOpenPanel
+import UniformTypeIdentifiers // Import for UTType
 
 struct ContentView: View {
     @EnvironmentObject var viewModel: TraReadViewModel
@@ -23,6 +25,14 @@ struct ContentView: View {
             backgroundColor.edgesIgnoringSafeArea(.all) // Apply background color
 
             VStack {
+                Button("Open File...") { // New Open File Button
+                    openFilePicker()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(primaryColor)
+                .foregroundColor(surfaceColor)
+                .padding(.bottom, 5) // Small padding below button
+
                 TextEditor(text: $viewModel.inputText)
                     .frame(height: 100)
                     .border(primaryColor, width: 2)
@@ -138,6 +148,78 @@ struct ContentView: View {
             }
         }
         // Removed .translationTask modifier, replaced by direct Task in onChange
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            print("ContentView: Dropped items received.")
+            for provider in providers {
+                if provider.canLoadObject(ofClass: URL.self) {
+                    _ = provider.loadObject(ofClass: URL.self) { url, error in
+                        DispatchQueue.main.async { [weak viewModel] in // Ensure UI updates on the main thread and capture viewModel weakly
+                            guard let vm = viewModel else { return }
+
+                            if let error = error {
+                                vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
+                                print("Error loading dropped file: \(error.localizedDescription)")
+                                return
+                            }
+                            guard let fileURL = url else {
+                                vm.currentSentence = "Error: Dropped item is not a valid file URL."
+                                print("Error: Dropped item is not a valid file URL.")
+                                return
+                            }
+
+                            // Start accessing the security-scoped resource
+                            // This might return false if the file is not security-scoped or access is denied by policy
+                            let accessed = fileURL.startAccessingSecurityScopedResource()
+                            defer { // Ensure stopAccessingSecurityScopedResource() is called when exiting scope
+                                if accessed {
+                                    fileURL.stopAccessingSecurityScopedResource()
+                                }
+                            }
+
+                            let fileHandler = FileHandler() // Instantiate the FileHandler
+                            do {
+                                let content = try fileHandler.loadFileContent(from: fileURL)
+                                vm.inputText = content // Update the ViewModel's inputText
+                                vm.processInputText(loadedText: content) // Process the loaded text
+                            } catch {
+                                vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
+                                print("Error loading dropped file: \(error.localizedDescription)")
+                            }
+                        }
+                    }
+                    return true // Handled this provider
+                }
+            }
+            return false // No provider was handled
+        }
+    }
+
+    // New function to open file picker
+    private func openFilePicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        // Using allowedContentTypes for modern macOS versions, falling back to allowedFileTypes
+        if #available(macOS 11.0, *) {
+            panel.allowedContentTypes = [.text, .pdf] // Allow both text and PDF files using UTType
+        } else {
+            panel.allowedFileTypes = ["txt", "pdf"] // Fallback for older macOS
+        }
+        
+
+        if panel.runModal() == .OK {
+            if let selectedURL = panel.url {
+                let fileHandler = FileHandler() // Instantiate the FileHandler
+                do {
+                    let content = try fileHandler.loadFileContent(from: selectedURL)
+                    viewModel.inputText = content // Update the ViewModel's inputText
+                    viewModel.processInputText(loadedText: content) // Process the loaded text
+                } catch {
+                    viewModel.currentSentence = "Error loading file: \(error.localizedDescription)"
+                    print("Error loading file: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 }
 

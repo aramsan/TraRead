@@ -10,15 +10,15 @@
 				<key>location-parameters</key>
 				<dict>
 					<key>EndingColumnNumber</key>
-					<string>45</string>
+					<string>8</string>
 					<key>EndingLineNumber</key>
 					<string>74</string>
 					<key>StartingColumnNumber</key>
-					<string>37</string>
+					<string>8</string>
 					<key>StartingLineNumber</key>
 					<string>74</string>
 					<key>Timestamp</key>
-					<string>792471260.643499</string>
+					<string>792482717.8571399</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -34,15 +34,15 @@
 			<key>text-context</key>
 			<dict>
 				<key>focused</key>
-				<string>Starting</string>
+				<string></string>
 				<key>leading</key>
-				<string>    // Speaks the current sentence.
-    func speakCurrentSentence() {
-        print("speakCurrentSentence: </string>
+				<string>            return true // Continue enumeration
+        }
+        </string>
 				<key>trailing</key>
-				<string> for '\(currentSentence)'")
-        if speechSynthesizer.isSpeaking {
-            speechSynthesizer.stopSpeaking(at: .immediate)
+				<string>
+        if let firstSentence = sentences.first {
+            currentSentence = firstSentence
 </string>
 			</dict>
 			<key>type</key>
