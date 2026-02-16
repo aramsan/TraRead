@@ -11,7 +11,7 @@
 ## 1. プロジェクト概要
 
 * **アプリ名:** TraRead（トラリード）
-* **プラットフォーム:** Apple Universal (macOS, iOS, iPadOS)
+* **プラットフォーム:** Apple Universal (macOS 15.0+, iOS 18.0+, iPadOS 18.0+)
 * **コンセプト:** 英語と日本語を「1文ずつ」交互に読み上げ、ユーザーの入力（Enter/Tap）で進行するステップ式翻訳リーダー。虎のキャラクターがナビゲートする、力強く楽しい学習体験を提供します。
 
 ## 2. デザイン & カラーパレット
@@ -47,7 +47,7 @@ iOS(左)とmacOS(右)のUIイメージ。テキスト未読込時は「アプリ
 
 ## 3. 技術スタック & アーキテクチャ
 
-* **Language:** Swift 6 / **Framework:** SwiftUI
+* **Language:** Swift 6 / **Framework:** SwiftUI (macOS 15.0+, iOS 18.0+)
 * **Architecture:** MVVM (Model-View-ViewModel)
 * **Core Frameworks:**
 * `AVFoundation` (TTS: AVSpeechSynthesizer)

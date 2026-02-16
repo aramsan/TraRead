@@ -59,9 +59,10 @@ TraRead/
 
 ### 必要環境
 
-- macOS 14.0 以上
-- Xcode 15 以上
-- Swift 5.9 以上
+- macOS 15.0 以上
+- iOS 18.0 以上
+- Xcode 16.0 以上
+- Swift 6.0 以上
 
 ### ビルド・実行
 
