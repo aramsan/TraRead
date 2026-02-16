@@ -1,0 +1,30 @@
+{
+  "configurations" : [
+    {
+      "id" : "44E3C6BE-B112-4203-A23D-3BD7E1475324",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:TraRead.xcodeproj",
+      "identifier" : "A352D42B2F3C16FD003EEB5C",
+      "name" : "TraRead"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:TraRead.xcodeproj",
+        "identifier" : "A352D47C2F3C656B003EEB5C",
+        "name" : "TraReadTests"
+      }
+    }
+  ],
+  "version" : 1
+}
