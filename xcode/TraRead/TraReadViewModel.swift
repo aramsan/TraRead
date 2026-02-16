@@ -103,6 +103,9 @@ class TraReadViewModel: NSObject, ObservableObject {
     func speakCurrentSentence() {
         print("speakCurrentSentence: Starting for '\(currentSentence)'")
         if let synthesizer = speechSynthesizer {
+            if synthesizer.isSpeaking {
+                synthesizer.stopSpeaking(at: .immediate)
+            }
             utterance = AVSpeechUtterance(string: currentSentence)
             utterance?.voice = AVSpeechSynthesisVoice(language: "en-US") // English voice
             synthesizer.speak(utterance!)
@@ -117,6 +120,9 @@ class TraReadViewModel: NSObject, ObservableObject {
     func speakJapaneseTranslation() {
         print("speakJapaneseTranslation: Starting for '\(japaneseTranslation)'")
         if let synthesizer = speechSynthesizer, !japaneseTranslation.isEmpty {
+            if synthesizer.isSpeaking {
+                synthesizer.stopSpeaking(at: .immediate)
+            }
             utterance = AVSpeechUtterance(string: japaneseTranslation)
             utterance?.voice = AVSpeechSynthesisVoice(language: "ja-JP") // Japanese voice
             synthesizer.speak(utterance!)
@@ -141,10 +147,10 @@ class TraReadViewModel: NSObject, ObservableObject {
             print("nextSentence: Moving to next English sentence: '\(currentSentence)'")
             speakCurrentSentence()
         } else {
-            currentSentence = "End of text. Please enter new text or reprocess."
+            // 最終文の後は何もしない（"End of text..." 表示を廃止）
             isSpeaking = false
             currentSpeakingLanguage = .none
-            print("nextSentence: End of text. isSpeaking: \(isSpeaking), currentSpeakingLanguage: \(currentSpeakingLanguage)")
+            print("nextSentence: Reached end of text. Stopping.")
         }
     }
     

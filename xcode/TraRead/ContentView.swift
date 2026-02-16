@@ -340,7 +340,8 @@ struct ContentView: View {
     // MARK: - 状態ヘルパー
 
     private var canAdvance: Bool {
-        !viewModel.isSpeaking && !viewModel.sentences.isEmpty
+        // 最後の文では再生ボタン（Play/Next）を無効化
+        !viewModel.isSpeaking && viewModel.currentSentenceIndex < viewModel.sentences.count - 1
     }
 
     private var canGoPrev: Bool {
@@ -348,7 +349,8 @@ struct ContentView: View {
     }
 
     private var canGoNext: Bool {
-        !viewModel.isSpeaking && viewModel.currentSentenceIndex < viewModel.sentences.count - 1
+        // 音声再生中でもNextボタン（FF）は有効化
+        viewModel.currentSentenceIndex < viewModel.sentences.count - 1
     }
 
     // MARK: - アクション
