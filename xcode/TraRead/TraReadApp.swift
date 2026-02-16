@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 @main
 struct TraReadApp: App {
@@ -16,6 +17,18 @@ struct TraReadApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(viewModel) // Inject the ViewModel into the environment
+        }
+        .commands {
+            CommandGroup(replacing: .pasteboard) {
+                Button("Paste") {
+                    if let string = NSPasteboard.general.string(forType: .string) {
+                        DispatchQueue.main.async {
+                            viewModel.processInputText(loadedText: string)
+                        }
+                    }
+                }
+                .keyboardShortcut("v", modifiers: .command)
+            }
         }
     }
 }

@@ -100,14 +100,7 @@ struct ContentView: View {
             }
             return .ignored
         }
-        // Command-V でペースト入力
-        .onKeyPress(characters: .init(charactersIn: "v"), phases: .down) { keyPress in
-            if keyPress.modifiers.contains(.command) {
-                pasteFromClipboard()
-                return .handled
-            }
-            return .ignored
-        }
+
         .onChange(of: viewModel.translationTrigger) { oldValue, newValue in
             handleTranslationTrigger(newValue)
         }
