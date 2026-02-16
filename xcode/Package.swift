@@ -6,8 +6,8 @@ import PackageDescription
 let package = Package(
     name: "TraRead",
     platforms: [
-        .macOS(.v14), // Assuming macOS 14+ for Translation framework (or check requirements)
-        .iOS(.v17)
+        .macOS(.v15), // Required for TranslationSession API
+        .iOS(.v18)
     ],
     products: [
         .library(

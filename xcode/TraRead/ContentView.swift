@@ -23,6 +23,9 @@ struct ContentView: View {
     // コピー完了フィードバック
     @State private var showCopiedFeedback: Bool = false
 
+    // Translation Configuration
+    @State private var translationConfig: TranslationSession.Configuration?
+
     var body: some View {
         ZStack {
             backgroundColor.edgesIgnoringSafeArea(.all)
@@ -106,6 +109,30 @@ struct ContentView: View {
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleFileDrop(providers)
+        }
+        .translationTask(translationConfig) { session in
+            // Guard against empty trigger to prevent accidental translation on start or reset
+            guard let textToTranslate = viewModel.translationTrigger, !textToTranslate.isEmpty else { return }
+            
+            print("TranslationTask: Starting translation for '\(textToTranslate.prefix(20))...'")
+            do {
+                let response = try await session.translate(textToTranslate)
+                
+                await MainActor.run {
+                    print("TranslationTask: Translation finished successfully.")
+                    viewModel.japaneseTranslation = response.targetText
+                    viewModel.speakJapaneseTranslation()
+                    // We keep translationTrigger populated for reference, or clear it if needed.
+                    // But we DON'T set translationConfig to nil here to avoid aborting the session.
+                }
+            } catch {
+                await MainActor.run {
+                    print("TranslationTask: Translation failed with error: \(error)")
+                    viewModel.japaneseTranslation = "Translation error: \(error.localizedDescription)"
+                    viewModel.isSpeaking = false
+                    viewModel.currentSpeakingLanguage = .none
+                }
+            }
         }
     }
 
@@ -416,33 +443,21 @@ struct ContentView: View {
     }
 
     private func handleTranslationTrigger(_ newValue: String?) {
-        guard let textToTranslate = newValue else { return }
+        guard let textToTranslate = newValue, !textToTranslate.isEmpty else { return }
 
-        let sourceLanguage = Locale.Language(identifier: "en-US")
-        let targetLanguage = Locale.Language(identifier: "ja-JP")
-
-        Task {
-            do {
-                let session = TranslationSession(
-                    installedSource: sourceLanguage,
-                    target: targetLanguage
-                )
-                let response = try await session.translate(textToTranslate)
-
-                await MainActor.run { [weak viewModel] in
-                    viewModel?.japaneseTranslation = response.targetText
-                    viewModel?.speakJapaneseTranslation()
-                }
-            } catch {
-                await MainActor.run { [weak viewModel] in
-                    viewModel?.japaneseTranslation = "Translation error: \(error.localizedDescription)"
-                    viewModel?.isSpeaking = false
-                    viewModel?.currentSpeakingLanguage = .none
-                }
-            }
-            await MainActor.run { [weak viewModel] in
-                viewModel?.translationTrigger = nil
-            }
+        print("handleTranslationTrigger: Triggered for '\(textToTranslate.prefix(20))...'")
+        
+        if translationConfig == nil {
+            print("handleTranslationTrigger: Creating new configuration.")
+            let sourceLanguage = Locale.Language(identifier: "en-US")
+            let targetLanguage = Locale.Language(identifier: "ja-JP")
+            translationConfig = TranslationSession.Configuration(
+                source: sourceLanguage,
+                target: targetLanguage
+            )
+        } else {
+            print("handleTranslationTrigger: Invalidating existing configuration to restart task.")
+            translationConfig?.invalidate()
         }
     }
 
