@@ -89,8 +89,9 @@ class TraReadViewModelTests: XCTestCase {
 
         viewModel.nextSentence()
 
-        // 最後の文に達した場合、終了メッセージが表示される
-        XCTAssertEqual(viewModel.currentSentence, "End of text. Please enter new text or reprocess.")
+        // 最終文に達した場合、テキストはそのまま維持される（"End of text..." は表示しない）
+        XCTAssertEqual(viewModel.currentSentence, "Only sentence.")
+        XCTAssertEqual(viewModel.currentSentenceIndex, 0)
         XCTAssertFalse(viewModel.isSpeaking)
         XCTAssertEqual(viewModel.currentSpeakingLanguage, .none)
     }
@@ -141,6 +142,32 @@ class TraReadViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.japaneseTranslation, "", "prevSentenceで日本語翻訳がクリアされること")
         XCTAssertNil(viewModel.translationTrigger, "prevSentenceで翻訳トリガーがクリアされること")
+    }
+
+    // MARK: - saveCurrentTranslation() テスト
+
+    func testSaveCurrentTranslation_persistsTranslation() {
+        viewModel.processInputText(loadedText: "Sentence one. Sentence two.")
+        viewModel.japaneseTranslation = "文章一。"
+        
+        viewModel.saveCurrentTranslation()
+        
+        XCTAssertEqual(viewModel.translations[0], "文章一。", "現在の翻訳が辞書に正しく保存されること")
+    }
+
+    func testNextPrev_automaticallySavesTranslation() {
+        viewModel.processInputText(loadedText: "Sentence one. Sentence two.")
+        viewModel.japaneseTranslation = "文章一。"
+        
+        viewModel.nextSentence()
+        
+        XCTAssertEqual(viewModel.translations[0], "文章一。", "nextSentence時に前の文の翻訳が保存されること")
+        XCTAssertEqual(viewModel.japaneseTranslation, "", "遷移先では現在の翻訳がクリアされていること")
+        
+        viewModel.japaneseTranslation = "文章二。"
+        viewModel.prevSentence()
+        
+        XCTAssertEqual(viewModel.translations[1], "文章二。", "prevSentence時に現在の翻訳が保存されること")
     }
 
     // MARK: - reset() テスト
