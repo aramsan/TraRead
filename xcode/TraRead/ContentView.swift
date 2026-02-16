@@ -201,7 +201,12 @@ struct ContentView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.currentSentenceIndex)
+        .id(viewModel.currentSentenceIndex) // インデックスごとにViewを再生成してトランジションを適用
+        .transition(.asymmetric(
+            insertion: .move(edge: .bottom).combined(with: .opacity),
+            removal: .move(edge: .top).combined(with: .opacity)
+        ))
+        // 翻訳の表示アニメーションは個別に保持（ただしトランジションと衝突しないよう注意）
         .animation(.easeInOut(duration: 0.3), value: viewModel.japaneseTranslation)
     }
 
@@ -231,7 +236,9 @@ struct ContentView: View {
         HStack(spacing: 24) {
             // Prev ボタン
             Button {
-                viewModel.prevSentence()
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    viewModel.prevSentence()
+                }
             } label: {
                 Image(systemName: "backward.fill")
                     .font(.title2)
@@ -339,7 +346,9 @@ struct ContentView: View {
     // MARK: - アクション
 
     private func advanceToNext() {
-        viewModel.nextSentence()
+        withAnimation(.easeInOut(duration: 0.3)) {
+            viewModel.nextSentence()
+        }
     }
 
     /// クリップボードからテキストをペースト
