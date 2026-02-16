@@ -114,9 +114,17 @@ struct ContentView: View {
     /// プレースホルダー表示
     private var placeholderView: some View {
         VStack(spacing: 20) {
-            Image(systemName: "doc.text.fill")
-                .font(.system(size: 48))
-                .foregroundColor(greyColor.opacity(0.5))
+            if let icon = getResizedIcon() {
+                Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 128, height: 128)
+                    .opacity(0.5)
+            } else {
+                Image(systemName: "doc.text.fill")
+                    .font(.system(size: 48))
+                    .foregroundColor(greyColor.opacity(0.5))
+            }
 
             Text("英語のファイルをドロップしてください")
                 .font(.system(size: 20, weight: .medium, design: .rounded))
@@ -470,6 +478,22 @@ struct ContentView: View {
             }
         }
         return false
+    }
+
+    private func getResizedIcon() -> NSImage? {
+        guard let originalIcon = NSImage(named: "TraReadIcon") else { return nil }
+        let targetSize = NSSize(width: 128, height: 128)
+        let resizedIcon = NSImage(size: targetSize)
+        
+        resizedIcon.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        originalIcon.draw(in: NSRect(origin: .zero, size: targetSize),
+                          from: NSRect(origin: .zero, size: originalIcon.size),
+                          operation: .copy,
+                          fraction: 1.0)
+        resizedIcon.unlockFocus()
+        
+        return resizedIcon
     }
 }
 
