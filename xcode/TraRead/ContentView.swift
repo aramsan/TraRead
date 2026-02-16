@@ -6,224 +6,472 @@
 //
 
 import SwiftUI
-import Translation // Import Translation framework for .translationTask
-import AppKit // Import AppKit for NSOpenPanel
-import UniformTypeIdentifiers // Import for UTType
+import Translation
+import AppKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject var viewModel: TraReadViewModel
-    // Removed @State private var translationConfiguration: TranslationSession.Configuration? = nil
 
-    // Color Palette from Design Doc
-    let primaryColor = Color(hex: "FFD700") // Tiger Gold
-    let secondaryColor = Color(hex: "FF8C00") // Accent Orange - New
-    let surfaceColor = Color(hex: "121212") // Almost Black
+    // カラーパレット（設計書準拠）
+    let primaryColor = Color(hex: "FFD700")    // Tiger Gold
+    let secondaryColor = Color(hex: "FF8C00")  // Accent Orange
+    let surfaceColor = Color(hex: "121212")    // Almost Black
     let backgroundColor = Color(hex: "FFFBE6") // Warm Off-White
+    let greyColor = Color(hex: "BDBDBD")       // Medium Grey
+
+    // コピー完了フィードバック
+    @State private var showCopiedFeedback: Bool = false
 
     var body: some View {
-        ZStack { // Use ZStack for background color
-            backgroundColor.edgesIgnoringSafeArea(.all) // Apply background color
+        ZStack {
+            backgroundColor.edgesIgnoringSafeArea(.all)
 
-            VStack {
-                Button("Open File...") { // New Open File Button
+            if viewModel.sentences.isEmpty {
+                // MARK: - プレースホルダー（テキスト未読込時）
+                placeholderView
+            } else {
+                // MARK: - メインコンテンツ（テキスト読込済み）
+                VStack(spacing: 0) {
+                    // 上部：ファイルを開くボタン
+                    HStack {
+                        Button {
+                            openFilePicker()
+                        } label: {
+                            Label("Open File...", systemImage: "doc.badge.plus")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(primaryColor)
+                        .foregroundColor(surfaceColor)
+                        .controlSize(.small)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+
+                    Spacer()
+
+                    // MARK: - 文章表示エリア（前後コンテキスト付き）
+                    sentenceDisplayView
+
+                    Spacer()
+
+                    // MARK: - プログレスバー
+                    progressBarView
+
+                    // MARK: - コントロールエリア
+                    HStack(alignment: .bottom) {
+                        Spacer()
+
+                        // ナビゲーションボタン群
+                        navigationControls
+
+                        Spacer()
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        // コピーボタン（右下）
+                        copyButton
+                            .padding(.trailing, 24)
+                    }
+                    .padding(.bottom, 24)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            // コピー完了フィードバック
+            if showCopiedFeedback {
+                copiedFeedbackOverlay
+            }
+        }
+        // 画面全体タップで次文進行
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if canAdvance {
+                advanceToNext()
+            }
+        }
+        // Enter キーで次文進行
+        .onKeyPress(.return) {
+            if canAdvance {
+                advanceToNext()
+                return .handled
+            }
+            return .ignored
+        }
+        // Command-V でペースト入力
+        .onKeyPress(characters: .init(charactersIn: "v"), phases: .down) { keyPress in
+            if keyPress.modifiers.contains(.command) {
+                pasteFromClipboard()
+                return .handled
+            }
+            return .ignored
+        }
+        .onChange(of: viewModel.translationTrigger) { oldValue, newValue in
+            handleTranslationTrigger(newValue)
+        }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            handleFileDrop(providers)
+        }
+    }
+
+    // MARK: - サブビュー
+
+    /// プレースホルダー表示
+    private var placeholderView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "doc.text.fill")
+                .font(.system(size: 48))
+                .foregroundColor(greyColor.opacity(0.5))
+
+            Text("英語のファイルをドロップしてください")
+                .font(.system(size: 20, weight: .medium, design: .rounded))
+                .foregroundColor(greyColor)
+
+            Text("または ⌘V でテキストをペースト")
+                .font(.system(size: 14, design: .rounded))
+                .foregroundColor(greyColor.opacity(0.7))
+
+            HStack(spacing: 12) {
+                Button {
                     openFilePicker()
+                } label: {
+                    Label("ファイルを開く...", systemImage: "folder")
+                        .font(.system(size: 13))
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(primaryColor)
                 .foregroundColor(surfaceColor)
-                .padding(.bottom, 5) // Small padding below button
-
-                TextEditor(text: $viewModel.inputText)
-                    .frame(height: 100)
-                    .border(primaryColor, width: 2)
-                    .padding()
-                    .foregroundColor(surfaceColor)
-                    .background(Color.white) // Make text editor background white for contrast
-                    .font(.body)
-
-                Button("Process Text") {
-                    viewModel.processInputText()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(primaryColor)
-                .foregroundColor(surfaceColor) // Text color for the button
-                .padding(.bottom)
-
-                Spacer()
-
-                Text(viewModel.currentSentence)
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundColor(surfaceColor)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal) // Apply horizontal padding to English sentence
-                
-                if !viewModel.japaneseTranslation.isEmpty {
-                    Text(viewModel.japaneseTranslation)
-                        .font(.title2)
-                        .foregroundColor(secondaryColor) // Apply secondary color
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal) // Apply horizontal padding to Japanese translation
-                        .padding(.top, 5)
-                }
-
-                // New HStack for navigation buttons
-                HStack {
-                    Button("Prev") {
-                        print("ContentView: Prev button tapped.")
-                        viewModel.prevSentence()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(primaryColor)
-                    .foregroundColor(surfaceColor)
-                    .disabled(viewModel.isSpeaking || viewModel.currentSentenceIndex == 0) // Disable if speaking or at first sentence
-
-                    Spacer() // Pushes Prev and Next buttons apart
-
-                    Button("Next") {
-                        print("ContentView: Next button tapped.")
-                        viewModel.nextSentence()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(primaryColor)
-                    .foregroundColor(surfaceColor)
-                    .disabled(viewModel.isSpeaking || viewModel.currentSentenceIndex == viewModel.sentences.count - 1) // Disable if speaking or at last sentence
-                }
-                .padding(.horizontal) // Add horizontal padding to the HStack
-                .padding(.bottom, 20) // Add padding from the bottom of the screen
-
-
-                // Removed hidden button to capture Enter key for next sentence
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity) // Make VStack fill available space
-        }
-        .onAppear {
-            // Optional: Process initial text if any, or just show welcome message
-        }
-        .onChange(of: viewModel.translationTrigger) { oldValue, newValue in
-            print("ContentView: onChange - translationTrigger changed to: \(newValue ?? "nil")")
-            if let textToTranslate = newValue {
-                // Ensure availability of translation service
-                guard #available(macOS 12.0, iOS 15.0, *) else {
-                    viewModel.japaneseTranslation = "Translation not available on this OS version."
-                    return
-                }
-                
-                // Define source and target languages directly
-                let sourceLanguage = Locale.Language(identifier: "en-US")
-                let targetLanguage = Locale.Language(identifier: "ja-JP")
-                
-                // Then immediately create and run the Task
-                Task {
-                    do {
-                        // Initialize TranslationSession using the correct initializer signature
-                        let session = TranslationSession(
-                            installedSource: sourceLanguage,
-                            target: targetLanguage
-                        )
-                        print("ContentView: translationTask (triggered by onChange) - Attempting to translate: '\(textToTranslate)'")
-                        let response = try await session.translate(textToTranslate)
-                        print("ContentView: translationTask (triggered by onChange) - Translation successful. TargetText: '\(response.targetText)'")
-                        
-                        await MainActor.run { [weak viewModel] in
-                            viewModel?.japaneseTranslation = response.targetText // Direct assignment
-                            viewModel?.speakJapaneseTranslation()
-                            print("ContentView: translationTask (triggered by onChange) - ViewModel updated and Japanese speech initiated.")
-                        }
-                    } catch {
-                        await MainActor.run { [weak viewModel] in
-                            viewModel?.japaneseTranslation = "Translation error: \(error.localizedDescription)"
-                            viewModel?.isSpeaking = false // Stop speaking if translation fails
-                            viewModel?.currentSpeakingLanguage = .none
-                            print("ContentView: translationTask (triggered by onChange) - Translation error: \(error.localizedDescription)")
-                        }
-                    }
-                    await MainActor.run { [weak viewModel] in
-                        viewModel?.translationTrigger = nil // Reset original trigger
-                        print("ContentView: translationTask (triggered by onChange) - translationTrigger reset to nil.")
-                    }
-                }
-            } else {
-                print("ContentView: onChange - translationTrigger is nil, no translation task triggered.")
-            }
-        }
-        // Removed .translationTask modifier, replaced by direct Task in onChange
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            print("ContentView: Dropped items received.")
-            for provider in providers {
-                if provider.canLoadObject(ofClass: URL.self) {
-                    _ = provider.loadObject(ofClass: URL.self) { url, error in
-                        DispatchQueue.main.async { [weak viewModel] in // Ensure UI updates on the main thread and capture viewModel weakly
-                            guard let vm = viewModel else { return }
+            .padding(.top, 8)
 
-                            if let error = error {
-                                vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
-                                print("Error loading dropped file: \(error.localizedDescription)")
-                                return
-                            }
-                            guard let fileURL = url else {
-                                vm.currentSentence = "Error: Dropped item is not a valid file URL."
-                                print("Error: Dropped item is not a valid file URL.")
-                                return
-                            }
-
-                            // Start accessing the security-scoped resource
-                            // This might return false if the file is not security-scoped or access is denied by policy
-                            let accessed = fileURL.startAccessingSecurityScopedResource()
-                            defer { // Ensure stopAccessingSecurityScopedResource() is called when exiting scope
-                                if accessed {
-                                    fileURL.stopAccessingSecurityScopedResource()
-                                }
-                            }
-
-                            let fileHandler = FileHandler() // Instantiate the FileHandler
-                            do {
-                                let content = try fileHandler.loadFileContent(from: fileURL)
-                                vm.inputText = content // Update the ViewModel's inputText
-                                vm.processInputText(loadedText: content) // Process the loaded text
-                            } catch {
-                                vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
-                                print("Error loading dropped file: \(error.localizedDescription)")
-                            }
-                        }
-                    }
-                    return true // Handled this provider
-                }
-            }
-            return false // No provider was handled
+            Text(".txt / .pdf に対応")
+                .font(.system(size: 11))
+                .foregroundColor(greyColor.opacity(0.5))
         }
     }
 
-    // New function to open file picker
+    /// 文章表示（前後コンテキスト付き）
+    private var sentenceDisplayView: some View {
+        VStack(spacing: 6) {
+            // 前の文（英文＋日本語翻訳をコンテキストとして表示）
+            if viewModel.currentSentenceIndex > 0 {
+                let prevIndex = viewModel.currentSentenceIndex - 1
+                VStack(spacing: 2) {
+                    Text(viewModel.sentences[prevIndex])
+                        .font(.system(size: 16, weight: .regular, design: .rounded))
+                        .foregroundColor(greyColor)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                    if let prevTranslation = viewModel.translations[prevIndex] {
+                        Text(prevTranslation)
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundColor(secondaryColor.opacity(0.4))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                    }
+                }
+                .padding(.horizontal, 40)
+                .transition(.opacity)
+            }
+
+            // 現在の英語文（大きく強調）
+            Text(viewModel.currentSentence)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundColor(surfaceColor)
+                .multilineTextAlignment(.center)
+                .lineSpacing(6)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 8)
+
+            // 日本語翻訳
+            if !viewModel.japaneseTranslation.isEmpty {
+                Text(viewModel.japaneseTranslation)
+                    .font(.system(size: 20, weight: .medium, design: .rounded))
+                    .foregroundColor(secondaryColor)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .padding(.horizontal, 32)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            // 次の文（コンテキスト）
+            if viewModel.currentSentenceIndex < viewModel.sentences.count - 1 {
+                Text(viewModel.sentences[viewModel.currentSentenceIndex + 1])
+                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .foregroundColor(greyColor)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .padding(.horizontal, 40)
+                    .padding(.top, 4)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: viewModel.currentSentenceIndex)
+        .animation(.easeInOut(duration: 0.3), value: viewModel.japaneseTranslation)
+    }
+
+    /// プログレスバー
+    private var progressBarView: some View {
+        Group {
+            if !viewModel.sentences.isEmpty {
+                VStack(spacing: 4) {
+                    ProgressView(
+                        value: Double(viewModel.currentSentenceIndex + 1),
+                        total: Double(viewModel.sentences.count)
+                    )
+                    .tint(primaryColor)
+                    .padding(.horizontal, 40)
+
+                    Text("\(viewModel.currentSentenceIndex + 1) / \(viewModel.sentences.count)")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(greyColor)
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+
+    /// ナビゲーションコントロール
+    private var navigationControls: some View {
+        HStack(spacing: 24) {
+            // Prev ボタン
+            Button {
+                viewModel.prevSentence()
+            } label: {
+                Image(systemName: "backward.fill")
+                    .font(.title2)
+                    .foregroundColor(canGoPrev ? surfaceColor : greyColor)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle().fill(canGoPrev ? primaryColor.opacity(0.3) : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoPrev)
+
+            // 再生ボタン（大きな丸型）
+            Button {
+                advanceToNext()
+            } label: {
+                Image(systemName: viewModel.isSpeaking ? "pause.fill" : "play.fill")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundColor(surfaceColor)
+                    .frame(width: 72, height: 72)
+                    .background(
+                        Circle().fill(
+                            canAdvance
+                                ? LinearGradient(
+                                    colors: [primaryColor, secondaryColor],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                  )
+                                : LinearGradient(
+                                    colors: [greyColor.opacity(0.5), greyColor.opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                  )
+                        )
+                    )
+                    .shadow(color: primaryColor.opacity(canAdvance ? 0.4 : 0), radius: 8, y: 4)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canAdvance)
+
+            // Next ボタン
+            Button {
+                viewModel.nextSentence()
+            } label: {
+                Image(systemName: "forward.fill")
+                    .font(.title2)
+                    .foregroundColor(canGoNext ? surfaceColor : greyColor)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        Circle().fill(canGoNext ? primaryColor.opacity(0.3) : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoNext)
+        }
+    }
+
+    /// コピーボタン（右下）
+    private var copyButton: some View {
+        Button {
+            copyAllSentences()
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.system(size: 14))
+                .foregroundColor(surfaceColor.opacity(0.6))
+                .frame(width: 36, height: 36)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(primaryColor.opacity(0.2))
+                )
+        }
+        .buttonStyle(.plain)
+        .help("英文・日文をコピー")
+    }
+
+    /// コピー完了フィードバック
+    private var copiedFeedbackOverlay: some View {
+        Text("コピーしました")
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .foregroundColor(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                Capsule().fill(surfaceColor.opacity(0.8))
+            )
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, 80)
+    }
+
+    // MARK: - 状態ヘルパー
+
+    private var canAdvance: Bool {
+        !viewModel.isSpeaking && !viewModel.sentences.isEmpty
+    }
+
+    private var canGoPrev: Bool {
+        !viewModel.isSpeaking && viewModel.currentSentenceIndex > 0
+    }
+
+    private var canGoNext: Bool {
+        !viewModel.isSpeaking && viewModel.currentSentenceIndex < viewModel.sentences.count - 1
+    }
+
+    // MARK: - アクション
+
+    private func advanceToNext() {
+        viewModel.nextSentence()
+    }
+
+    /// クリップボードからテキストをペースト
+    private func pasteFromClipboard() {
+        guard let pastedString = NSPasteboard.general.string(forType: .string),
+              !pastedString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        viewModel.processInputText(loadedText: pastedString)
+    }
+
+    /// 全文の英文・日文をクリップボードにコピー
+    private func copyAllSentences() {
+        // まず現在の翻訳を保存
+        viewModel.saveCurrentTranslation()
+
+        var lines: [String] = []
+        for (index, sentence) in viewModel.sentences.enumerated() {
+            lines.append(sentence)
+            if let translation = viewModel.translations[index] {
+                lines.append(translation)
+            }
+            lines.append("") // 文間に空行
+        }
+        let textToCopy = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(textToCopy, forType: .string)
+
+        withAnimation(.easeInOut(duration: 0.3)) {
+            showCopiedFeedback = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showCopiedFeedback = false
+            }
+        }
+    }
+
     private func openFilePicker() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
-        // Using allowedContentTypes for modern macOS versions, falling back to allowedFileTypes
-        if #available(macOS 11.0, *) {
-            panel.allowedContentTypes = [.text, .pdf] // Allow both text and PDF files using UTType
-        } else {
-            panel.allowedFileTypes = ["txt", "pdf"] // Fallback for older macOS
-        }
-        
+        panel.allowedContentTypes = [.text, .pdf]
 
-        if panel.runModal() == .OK {
-            if let selectedURL = panel.url {
-                let fileHandler = FileHandler() // Instantiate the FileHandler
-                do {
-                    let content = try fileHandler.loadFileContent(from: selectedURL)
-                    viewModel.inputText = content // Update the ViewModel's inputText
-                    viewModel.processInputText(loadedText: content) // Process the loaded text
-                } catch {
-                    viewModel.currentSentence = "Error loading file: \(error.localizedDescription)"
-                    print("Error loading file: \(error.localizedDescription)")
-                }
+        if panel.runModal() == .OK, let selectedURL = panel.url {
+            let fileHandler = FileHandler()
+            do {
+                let content = try fileHandler.loadFileContent(from: selectedURL)
+                viewModel.processInputText(loadedText: content)
+            } catch {
+                viewModel.currentSentence = "Error loading file: \(error.localizedDescription)"
             }
         }
+    }
+
+    private func handleTranslationTrigger(_ newValue: String?) {
+        guard let textToTranslate = newValue else { return }
+
+        let sourceLanguage = Locale.Language(identifier: "en-US")
+        let targetLanguage = Locale.Language(identifier: "ja-JP")
+
+        Task {
+            do {
+                let session = TranslationSession(
+                    installedSource: sourceLanguage,
+                    target: targetLanguage
+                )
+                let response = try await session.translate(textToTranslate)
+
+                await MainActor.run { [weak viewModel] in
+                    viewModel?.japaneseTranslation = response.targetText
+                    viewModel?.speakJapaneseTranslation()
+                }
+            } catch {
+                await MainActor.run { [weak viewModel] in
+                    viewModel?.japaneseTranslation = "Translation error: \(error.localizedDescription)"
+                    viewModel?.isSpeaking = false
+                    viewModel?.currentSpeakingLanguage = .none
+                }
+            }
+            await MainActor.run { [weak viewModel] in
+                viewModel?.translationTrigger = nil
+            }
+        }
+    }
+
+    private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            if provider.canLoadObject(ofClass: URL.self) {
+                _ = provider.loadObject(ofClass: URL.self) { url, error in
+                    DispatchQueue.main.async { [weak viewModel] in
+                        guard let vm = viewModel else { return }
+
+                        if let error = error {
+                            vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
+                            return
+                        }
+                        guard let fileURL = url else {
+                            vm.currentSentence = "Error: Dropped item is not a valid file URL."
+                            return
+                        }
+
+                        let accessed = fileURL.startAccessingSecurityScopedResource()
+                        defer {
+                            if accessed { fileURL.stopAccessingSecurityScopedResource() }
+                        }
+
+                        let fileHandler = FileHandler()
+                        do {
+                            let content = try fileHandler.loadFileContent(from: fileURL)
+                            vm.processInputText(loadedText: content)
+                        } catch {
+                            vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
+                        }
+                    }
+                }
+                return true
+            }
+        }
+        return false
     }
 }
 
 #Preview {
     ContentView()
-        .environmentObject(TraReadViewModel()) // Provide a ViewModel for preview
+        .environmentObject(TraReadViewModel())
 }

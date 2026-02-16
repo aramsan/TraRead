@@ -28,6 +28,7 @@ class TraReadViewModel: NSObject, ObservableObject {
     @Published var isProcessing: Bool = false // To indicate text processing
     @Published var currentSpeakingLanguage: SpeakingLanguage = .none // Track current speaking language
     @Published var translationTrigger: String? = nil // New property to trigger translation from View
+    @Published var translations: [Int: String] = [:] // 各文の日本語翻訳を保持
     
     private var speechSynthesizer: AVSpeechSynthesizer? // Made optional
     private var utterance: AVSpeechUtterance?
@@ -63,6 +64,7 @@ class TraReadViewModel: NSObject, ObservableObject {
         currentSentenceIndex = 0
         japaneseTranslation = "" // Clear previous translation
         translationTrigger = nil // Clear trigger
+        translations = [:] // Clear all stored translations
 
         if let loadedText = loadedText {
             self.inputText = loadedText // Update inputText with loaded content
@@ -129,6 +131,7 @@ class TraReadViewModel: NSObject, ObservableObject {
     func nextSentence() {
         print("nextSentence: Starting...")
         
+        saveCurrentTranslation() // 現在の翻訳を保存してから次へ
         japaneseTranslation = "" // Clear previous translation
         translationTrigger = nil // Clear trigger
         
@@ -149,17 +152,21 @@ class TraReadViewModel: NSObject, ObservableObject {
     func prevSentence() {
         print("prevSentence: Starting...")
         
+        saveCurrentTranslation() // 現在の翻訳を保存してから戻る
         japaneseTranslation = "" // Clear previous translation
         translationTrigger = nil // Clear trigger
         
         if currentSentenceIndex > 0 {
             currentSentenceIndex -= 1
             currentSentence = sentences[currentSentenceIndex]
+            // 保存済みの翻訳があれば復元
+            if let savedTranslation = translations[currentSentenceIndex] {
+                japaneseTranslation = savedTranslation
+            }
             print("prevSentence: Moving to previous English sentence: '\(currentSentence)'")
             speakCurrentSentence()
         } else {
             print("prevSentence: Already at the first sentence. Cannot go back further.")
-            // Optionally, re-speak the current (first) sentence if desired
             speakCurrentSentence()
         }
     }
@@ -176,6 +183,14 @@ class TraReadViewModel: NSObject, ObservableObject {
         isProcessing = false
         currentSpeakingLanguage = .none
         translationTrigger = nil
+        translations = [:]
+    }
+
+    /// 現在の文の翻訳を保存する
+    func saveCurrentTranslation() {
+        if !japaneseTranslation.isEmpty {
+            translations[currentSentenceIndex] = japaneseTranslation
+        }
     }
 }
 
