@@ -29,6 +29,12 @@ class TraReadViewModel: NSObject, ObservableObject {
     @Published var currentSpeakingLanguage: SpeakingLanguage = .none // Track current speaking language
     @Published var translationTrigger: String? = nil // New property to trigger translation from View
     @Published var translations: [Int: String] = [:] // 各文の日本語翻訳を保持
+    @Published var isContinuousPlayEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isContinuousPlayEnabled, forKey: "isContinuousPlayEnabled")
+        }
+    }
+    
     
     private var speechSynthesizer: AVSpeechSynthesizer? // Made optional
     private var utterance: AVSpeechUtterance?
@@ -46,6 +52,9 @@ class TraReadViewModel: NSObject, ObservableObject {
             // Running in a test environment, do not initialize AVSpeechSynthesizer
             self.speechSynthesizer = nil // Explicitly nil if testing
         }
+
+        // Load settings
+        self.isContinuousPlayEnabled = UserDefaults.standard.bool(forKey: "isContinuousPlayEnabled")
 
         super.init() // Call super.init()
         
@@ -215,7 +224,17 @@ extension TraReadViewModel: AVSpeechSynthesizerDelegate {
             // Japanese speech finished, now wait for user input
             isSpeaking = false
             currentSpeakingLanguage = .none
-            print("speechSynthesizer:didFinish: Japanese speech done. isSpeaking: \(isSpeaking), currentSpeakingLanguage: \(currentSpeakingLanguage). Waiting for user input.")
+            print("speechSynthesizer:didFinish: Japanese speech done. isSpeaking: \(isSpeaking), currentSpeakingLanguage: \(currentSpeakingLanguage).")
+            
+            if isContinuousPlayEnabled {
+                print("speechSynthesizer:didFinish: Continuous Play enabled. Advancing to next.")
+                // Dispatch on Main to avoid nested speech synthesizer calls if any
+                DispatchQueue.main.async {
+                    self.nextSentence()
+                }
+            } else {
+                print("speechSynthesizer:didFinish: Waiting for user input.")
+            }
         case .none:
             // Should not happen, but reset if it does
             isSpeaking = false

@@ -249,19 +249,26 @@ struct ContentView: View {
     private var progressBarView: some View {
         Group {
             if !viewModel.sentences.isEmpty {
-                VStack(spacing: 4) {
-                    ProgressView(
-                        value: Double(viewModel.currentSentenceIndex + 1),
-                        total: Double(viewModel.sentences.count)
-                    )
-                    .tint(primaryColor)
-                    .padding(.horizontal, 40)
+                    ZStack(alignment: .bottomTrailing) {
+                        VStack(spacing: 4) {
+                            ProgressView(
+                                value: Double(viewModel.currentSentenceIndex + 1),
+                                total: Double(viewModel.sentences.count)
+                            )
+                            .tint(primaryColor)
+                            .padding(.horizontal, 40)
 
-                    Text("\(viewModel.currentSentenceIndex + 1) / \(viewModel.sentences.count)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(greyColor)
-                }
-                .padding(.bottom, 8)
+                            Text("\(viewModel.currentSentenceIndex + 1) / \(viewModel.sentences.count)")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(greyColor)
+                        }
+                        
+                        // 連続再生スイッチ（YouTubeの自動再生ボタンを模したデザイン）
+                        autoPlayToggle
+                            .padding(.trailing, 40)
+                            .offset(y: 4)
+                    }
+                    .padding(.bottom, 8)
             }
         }
     }
@@ -347,6 +354,39 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .help("英文・日文をコピー")
+    }
+
+    /// 連続再生（オートプレイ）トグル
+    private var autoPlayToggle: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                viewModel.isContinuousPlayEnabled.toggle()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                ZStack {
+                    // 背景
+                    Capsule()
+                        .fill(viewModel.isContinuousPlayEnabled ? primaryColor : greyColor.opacity(0.3))
+                        .frame(width: 32, height: 16)
+                    
+                    // スイッチのつまみ
+                    Circle()
+                        .fill(viewModel.isContinuousPlayEnabled ? surfaceColor : .white)
+                        .frame(width: 12, height: 12)
+                        .shadow(radius: 1)
+                        .offset(x: viewModel.isContinuousPlayEnabled ? 8 : -8)
+                    
+                    // YouTube風のアイコン（再生/一時停止マーク）をつまみの中に配置
+                    Image(systemName: viewModel.isContinuousPlayEnabled ? "play.fill" : "pause.fill")
+                        .font(.system(size: 6, weight: .bold))
+                        .foregroundColor(viewModel.isContinuousPlayEnabled ? primaryColor : greyColor)
+                        .offset(x: viewModel.isContinuousPlayEnabled ? 8 : -8)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help("連続再生を\(viewModel.isContinuousPlayEnabled ? "オフ" : "オン")にする")
     }
 
     /// コピー完了フィードバック
