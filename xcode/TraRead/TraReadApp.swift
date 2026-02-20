@@ -1,12 +1,10 @@
-//
-//  TraReadApp.swift
-//  TraRead
-//
-//  Created by aram.mine on 2026/02/11.
-//
-
 import SwiftUI
+
+#if os(macOS)
 import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 @main
 struct TraReadApp: App {
@@ -21,14 +19,22 @@ struct TraReadApp: App {
         .commands {
             CommandGroup(replacing: .pasteboard) {
                 Button("Paste") {
-                    if let string = NSPasteboard.general.string(forType: .string) {
-                        DispatchQueue.main.async {
-                            viewModel.processInputText(loadedText: string)
-                        }
-                    }
+                    pasteFromClipboard()
                 }
                 .keyboardShortcut("v", modifiers: .command)
             }
         }
+    }
+
+    private func pasteFromClipboard() {
+        #if os(macOS)
+        if let string = NSPasteboard.general.string(forType: .string) {
+            viewModel.processInputText(loadedText: string)
+        }
+        #elseif os(iOS)
+        if let string = UIPasteboard.general.string {
+            viewModel.processInputText(loadedText: string)
+        }
+        #endif
     }
 }

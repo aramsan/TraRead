@@ -1,14 +1,12 @@
-//
-//  ContentView.swift
-//  TraRead
-//
-//  Created by aram.mine on 2026/02/11.
-//
-
 import SwiftUI
 import Translation
-import AppKit
 import UniformTypeIdentifiers
+
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 struct ContentView: View {
     @EnvironmentObject var viewModel: TraReadViewModel
@@ -26,6 +24,34 @@ struct ContentView: View {
     // Translation Configuration
     @State private var translationConfig: TranslationSession.Configuration?
 
+    // File Picker State
+    @State private var isFileImporterPresented = false
+
+    // MARK: - フォントサイズ調整（iOS/macOS対応）
+    private var mainFontSize: CGFloat {
+        #if os(iOS)
+        return 22
+        #else
+        return 32
+        #endif
+    }
+
+    private var translationFontSize: CGFloat {
+        #if os(iOS)
+        return 16
+        #else
+        return 24
+        #endif
+    }
+
+    private var contextFontSize: CGFloat {
+        #if os(iOS)
+        return 12
+        #else
+        return 18
+        #endif
+    }
+
     var body: some View {
         ZStack {
             backgroundColor.edgesIgnoringSafeArea(.all)
@@ -39,7 +65,7 @@ struct ContentView: View {
                     // 上部：ファイルを開くボタン
                     HStack {
                         Button {
-                            openFilePicker()
+                            isFileImporterPresented = true
                         } label: {
                             Label("Open File...", systemImage: "doc.badge.plus")
                                 .font(.caption)
@@ -54,12 +80,9 @@ struct ContentView: View {
                     .padding(.horizontal)
                     .padding(.top, 12)
 
-                    Spacer()
-
                     // MARK: - 文章表示エリア（前後コンテキスト付き）
                     sentenceDisplayView
-
-                    Spacer()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     // MARK: - プログレスバー
                     progressBarView
@@ -88,6 +111,30 @@ struct ContentView: View {
                 copiedFeedbackOverlay
             }
         }
+        .background {
+            // Bulletproof Translation Trigger: Use if let + dynamic ID to force re-initialization
+            if let config = translationConfig {
+                Color.clear
+                    .translationTask(config) { session in
+                        guard let textToTranslate = viewModel.translationTrigger, !textToTranslate.isEmpty else { return }
+                        
+                        print("TranslationTask: Starting (Sentence \(viewModel.currentSentenceIndex))")
+                        do {
+                            let response = try await session.translate(textToTranslate)
+                            await MainActor.run {
+                                viewModel.japaneseTranslation = response.targetText
+                                viewModel.speakJapaneseTranslation()
+                            }
+                        } catch {
+                            await MainActor.run {
+                                viewModel.japaneseTranslation = "Translation error: \(error.localizedDescription)"
+                                viewModel.isSpeaking = false
+                            }
+                        }
+                    }
+                    .id("TranslationTask-\(viewModel.currentSentenceIndex)")
+            }
+        }
         // 画面全体タップで次文進行
         .contentShape(Rectangle())
         .onTapGesture {
@@ -95,6 +142,7 @@ struct ContentView: View {
                 advanceToNext()
             }
         }
+        #if os(macOS)
         // Enter キーで次文進行
         .onKeyPress(.return) {
             if canAdvance {
@@ -103,36 +151,19 @@ struct ContentView: View {
             }
             return .ignored
         }
-
+        #endif
         .onChange(of: viewModel.translationTrigger) { oldValue, newValue in
             handleTranslationTrigger(newValue)
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleFileDrop(providers)
         }
-        .translationTask(translationConfig) { session in
-            // Guard against empty trigger to prevent accidental translation on start or reset
-            guard let textToTranslate = viewModel.translationTrigger, !textToTranslate.isEmpty else { return }
-            
-            print("TranslationTask: Starting translation for '\(textToTranslate.prefix(20))...'")
-            do {
-                let response = try await session.translate(textToTranslate)
-                
-                await MainActor.run {
-                    print("TranslationTask: Translation finished successfully.")
-                    viewModel.japaneseTranslation = response.targetText
-                    viewModel.speakJapaneseTranslation()
-                    // We keep translationTrigger populated for reference, or clear it if needed.
-                    // But we DON'T set translationConfig to nil here to avoid aborting the session.
-                }
-            } catch {
-                await MainActor.run {
-                    print("TranslationTask: Translation failed with error: \(error)")
-                    viewModel.japaneseTranslation = "Translation error: \(error.localizedDescription)"
-                    viewModel.isSpeaking = false
-                    viewModel.currentSpeakingLanguage = .none
-                }
-            }
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: [.plainText, .pdf],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFileImport(result: result)
         }
     }
 
@@ -141,29 +172,26 @@ struct ContentView: View {
     /// プレースホルダー表示
     private var placeholderView: some View {
         VStack(spacing: 20) {
-            if let icon = getResizedIcon() {
-                Image(nsImage: icon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 128, height: 128)
-                    .opacity(0.5)
-            } else {
-                Image(systemName: "doc.text.fill")
-                    .font(.system(size: 48))
-                    .foregroundColor(greyColor.opacity(0.5))
-            }
+            Image("TraReadIcon")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 128, height: 128)
+                .opacity(0.5)
 
             Text("英語のファイルをドロップしてください")
                 .font(.system(size: 20, weight: .medium, design: .rounded))
                 .foregroundColor(greyColor)
+                .multilineTextAlignment(.center)
 
+            #if os(macOS)
             Text("または ⌘V でテキストをペースト")
                 .font(.system(size: 14, design: .rounded))
                 .foregroundColor(greyColor.opacity(0.7))
+            #endif
 
             HStack(spacing: 12) {
                 Button {
-                    openFilePicker()
+                    isFileImporterPresented = true
                 } label: {
                     Label("ファイルを開く...", systemImage: "folder")
                         .font(.system(size: 13))
@@ -178,70 +206,102 @@ struct ContentView: View {
                 .font(.system(size: 11))
                 .foregroundColor(greyColor.opacity(0.5))
         }
+        .padding()
     }
 
     /// 文章表示（前後コンテキスト付き）
     private var sentenceDisplayView: some View {
-        VStack(spacing: 6) {
-            // 前の文（英文＋日本語翻訳をコンテキストとして表示）
-            if viewModel.currentSentenceIndex > 0 {
-                let prevIndex = viewModel.currentSentenceIndex - 1
-                VStack(spacing: 2) {
-                    Text(viewModel.sentences[prevIndex])
-                        .font(.system(size: 16, weight: .regular, design: .rounded))
-                        .foregroundColor(greyColor)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                    if let prevTranslation = viewModel.translations[prevIndex] {
-                        Text(prevTranslation)
-                            .font(.system(size: 14, weight: .regular, design: .rounded))
-                            .foregroundColor(secondaryColor.opacity(0.4))
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(3)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 24) {
+                    // 上端アンカー
+                    Color.clear.frame(height: 1).id("SentenceTop")
+
+                    // 前の文（フェード表示）
+                    Group {
+                        if viewModel.currentSentenceIndex > 0 {
+                            let prevIndex = viewModel.currentSentenceIndex - 1
+                            VStack(spacing: 4) {
+                                Text(viewModel.sentences[prevIndex])
+                                    .font(.system(size: contextFontSize, weight: .regular, design: .rounded))
+                                    .foregroundColor(greyColor)
+                            }
+                            .opacity(0.3)
+                            .scaleEffect(0.9)
+                        } else {
+                            Color.clear.frame(height: 40)
+                        }
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+
+                    // 現在の英語文と翻訳（中央配置・強調）
+                    VStack(spacing: 16) {
+                        Text(viewModel.currentSentence)
+                            .font(.system(size: mainFontSize, weight: .bold, design: .rounded))
+                            .minimumScaleFactor(0.5)
+                            .allowsTightening(true)
+                            .foregroundColor(surfaceColor)
+                            .lineSpacing(6)
+                            .id("EnglishContent")
+
+                        if !viewModel.japaneseTranslation.isEmpty {
+                            Text(viewModel.japaneseTranslation)
+                                .font(.system(size: translationFontSize, weight: .medium, design: .rounded))
+                                .minimumScaleFactor(0.6)
+                                .allowsTightening(true)
+                                .foregroundColor(secondaryColor)
+                                .lineSpacing(4)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                                .id("TranslationContent")
+                        } else if viewModel.isProcessing {
+                             ProgressView()
+                                .tint(secondaryColor)
+                        }
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, 20)
+
+                    // 下端アンカー
+                    Color.clear.frame(height: 1).id("SentenceBottom")
+
+                    // 次の文（フェード表示）
+                    Group {
+                        if viewModel.currentSentenceIndex < viewModel.sentences.count - 1 {
+                            Text(viewModel.sentences[viewModel.currentSentenceIndex + 1])
+                                .font(.system(size: contextFontSize, weight: .regular, design: .rounded))
+                                .foregroundColor(greyColor)
+                                .opacity(0.3)
+                                .scaleEffect(0.9)
+                        } else {
+                            Color.clear.frame(height: 20)
+                        }
+                    }
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                }
+                .padding(.vertical, 40)
+            }
+            .scrollIndicators(.hidden)
+            .onChange(of: viewModel.currentSentenceIndex) { _, _ in
+                // 文が切り替わったら即座に先頭へ
+                proxy.scrollTo("SentenceTop", anchor: .top)
+            }
+            .onChange(of: viewModel.japaneseTranslation) { _, newValue in
+                // 翻訳が表示されたら余裕を持って下部へスクロール
+                if !newValue.isEmpty {
+                    withAnimation(.easeInOut(duration: 1.5)) {
+                        proxy.scrollTo("SentenceBottom", anchor: .bottom)
                     }
                 }
-                .padding(.horizontal, 40)
-                .transition(.opacity)
-            }
-
-            // 現在の英語文（大きく強調）
-            Text(viewModel.currentSentence)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(surfaceColor)
-                .multilineTextAlignment(.center)
-                .lineSpacing(6)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 8)
-
-            // 日本語翻訳
-            if !viewModel.japaneseTranslation.isEmpty {
-                Text(viewModel.japaneseTranslation)
-                    .font(.system(size: 20, weight: .medium, design: .rounded))
-                    .foregroundColor(secondaryColor)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .padding(.horizontal, 32)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-
-            // 次の文（コンテキスト）
-            if viewModel.currentSentenceIndex < viewModel.sentences.count - 1 {
-                Text(viewModel.sentences[viewModel.currentSentenceIndex + 1])
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                    .foregroundColor(greyColor)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(4)
-                    .padding(.horizontal, 40)
-                    .padding(.top, 4)
-                    .transition(.opacity)
             }
         }
-        .id(viewModel.currentSentenceIndex) // インデックスごとにViewを再生成してトランジションを適用
         .transition(.asymmetric(
             insertion: .move(edge: .bottom).combined(with: .opacity),
             removal: .move(edge: .top).combined(with: .opacity)
         ))
-        // 翻訳の表示アニメーションは個別に保持（ただしトランジションと衝突しないよう注意）
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.currentSentenceIndex)
         .animation(.easeInOut(duration: 0.3), value: viewModel.japaneseTranslation)
     }
 
@@ -249,88 +309,87 @@ struct ContentView: View {
     private var progressBarView: some View {
         Group {
             if !viewModel.sentences.isEmpty {
-                    ZStack(alignment: .bottomTrailing) {
-                        VStack(spacing: 4) {
-                            ProgressView(
-                                value: Double(viewModel.currentSentenceIndex + 1),
-                                total: Double(viewModel.sentences.count)
-                            )
-                            .tint(primaryColor)
-                            .padding(.horizontal, 40)
+                VStack(spacing: 8) {
+                    ProgressView(
+                        value: Double(viewModel.currentSentenceIndex + 1),
+                        total: Double(viewModel.sentences.count)
+                    )
+                    .tint(primaryColor)
+                    .padding(.horizontal, 40)
 
-                            Text("\(viewModel.currentSentenceIndex + 1) / \(viewModel.sentences.count)")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundColor(greyColor)
-                        }
+                    HStack {
+                        Text("\(viewModel.currentSentenceIndex + 1) / \(viewModel.sentences.count)")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(greyColor)
                         
-                        // 連続再生スイッチ（YouTubeの自動再生ボタンを模したデザイン）
+                        Spacer()
+                        
                         autoPlayToggle
-                            .padding(.trailing, 40)
-                            .offset(y: 4)
                     }
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, 40)
+                }
+                .padding(.bottom, 16)
             }
         }
     }
 
     /// ナビゲーションコントロール
     private var navigationControls: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 32) {
             // Prev ボタン
             Button {
-                withAnimation(.easeInOut(duration: 0.3)) {
+                withAnimation {
                     viewModel.prevSentence()
                 }
             } label: {
                 Image(systemName: "backward.fill")
                     .font(.title2)
-                    .foregroundColor(canGoPrev ? surfaceColor : greyColor)
-                    .frame(width: 48, height: 48)
+                    .foregroundColor(canGoPrev ? surfaceColor : greyColor.opacity(0.3))
+                    .frame(width: 56, height: 56)
                     .background(
-                        Circle().fill(canGoPrev ? primaryColor.opacity(0.3) : Color.clear)
+                        Circle().fill(canGoPrev ? primaryColor.opacity(0.2) : Color.clear)
                     )
             }
             .buttonStyle(.plain)
             .disabled(!canGoPrev)
 
-            // 再生ボタン（大きな丸型）
+            // メイン再生ボタン（大きな丸型グラデーション）
             Button {
                 advanceToNext()
             } label: {
-                Image(systemName: viewModel.isSpeaking ? "pause.fill" : "play.fill")
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(surfaceColor)
-                    .frame(width: 72, height: 72)
-                    .background(
-                        Circle().fill(
-                            canAdvance
-                                ? LinearGradient(
-                                    colors: [primaryColor, secondaryColor],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                  )
-                                : LinearGradient(
-                                    colors: [greyColor.opacity(0.5), greyColor.opacity(0.3)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                  )
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [primaryColor, secondaryColor],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                    .shadow(color: primaryColor.opacity(canAdvance ? 0.4 : 0), radius: 8, y: 4)
+                        .shadow(color: secondaryColor.opacity(0.3), radius: 10, y: 5)
+                    
+                    Image(systemName: viewModel.isSpeaking ? "pause.fill" : "play.fill")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(surfaceColor)
+                }
+                .frame(width: 88, height: 88)
+                .opacity(canAdvance ? 1.0 : 0.5)
             }
             .buttonStyle(.plain)
             .disabled(!canAdvance)
 
             // Next ボタン
             Button {
-                viewModel.nextSentence()
+                withAnimation {
+                    viewModel.nextSentence()
+                }
             } label: {
                 Image(systemName: "forward.fill")
                     .font(.title2)
-                    .foregroundColor(canGoNext ? surfaceColor : greyColor)
-                    .frame(width: 48, height: 48)
+                    .foregroundColor(canGoNext ? surfaceColor : greyColor.opacity(0.3))
+                    .frame(width: 56, height: 56)
                     .background(
-                        Circle().fill(canGoNext ? primaryColor.opacity(0.3) : Color.clear)
+                        Circle().fill(canGoNext ? primaryColor.opacity(0.2) : Color.clear)
                     )
             }
             .buttonStyle(.plain)
@@ -344,16 +403,15 @@ struct ContentView: View {
             copyAllSentences()
         } label: {
             Image(systemName: "doc.on.doc")
-                .font(.system(size: 14))
-                .foregroundColor(surfaceColor.opacity(0.6))
-                .frame(width: 36, height: 36)
+                .font(.system(size: 16))
+                .foregroundColor(surfaceColor.opacity(0.7))
+                .frame(width: 44, height: 44)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 12)
                         .fill(primaryColor.opacity(0.2))
                 )
         }
         .buttonStyle(.plain)
-        .help("英文・日文をコピー")
     }
 
     /// 連続再生（オートプレイ）トグル
@@ -363,51 +421,45 @@ struct ContentView: View {
                 viewModel.isContinuousPlayEnabled.toggle()
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
+                Text("Auto Play")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(viewModel.isContinuousPlayEnabled ? secondaryColor : greyColor)
+                
                 ZStack {
-                    // 背景
                     Capsule()
                         .fill(viewModel.isContinuousPlayEnabled ? primaryColor : greyColor.opacity(0.3))
-                        .frame(width: 32, height: 16)
+                        .frame(width: 36, height: 20)
                     
-                    // スイッチのつまみ
                     Circle()
-                        .fill(viewModel.isContinuousPlayEnabled ? surfaceColor : .white)
-                        .frame(width: 12, height: 12)
+                        .fill(.white)
+                        .frame(width: 16, height: 16)
                         .shadow(radius: 1)
-                        .offset(x: viewModel.isContinuousPlayEnabled ? 8 : -8)
-                    
-                    // YouTube風のアイコン（再生/一時停止マーク）をつまみの中に配置
-                    Image(systemName: viewModel.isContinuousPlayEnabled ? "play.fill" : "pause.fill")
-                        .font(.system(size: 6, weight: .bold))
-                        .foregroundColor(viewModel.isContinuousPlayEnabled ? primaryColor : greyColor)
                         .offset(x: viewModel.isContinuousPlayEnabled ? 8 : -8)
                 }
             }
         }
         .buttonStyle(.plain)
-        .help("連続再生を\(viewModel.isContinuousPlayEnabled ? "オフ" : "オン")にする")
     }
 
     /// コピー完了フィードバック
     private var copiedFeedbackOverlay: some View {
-        Text("コピーしました")
-            .font(.system(size: 13, weight: .medium, design: .rounded))
+        Text("Copied!")
+            .font(.system(size: 14, weight: .bold, design: .rounded))
             .foregroundColor(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
             .background(
-                Capsule().fill(surfaceColor.opacity(0.8))
+                Capsule().fill(surfaceColor.opacity(0.9))
             )
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            .padding(.bottom, 80)
+            .transition(.scale.combined(with: .opacity))
+            .padding(.bottom, 100)
+            .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
     // MARK: - 状態ヘルパー
 
     private var canAdvance: Bool {
-        // 最後の文では再生ボタン（Play/Next）を無効化
         !viewModel.isSpeaking && viewModel.currentSentenceIndex < viewModel.sentences.count - 1
     }
 
@@ -416,30 +468,39 @@ struct ContentView: View {
     }
 
     private var canGoNext: Bool {
-        // 音声再生中でもNextボタン（FF）は有効化
         viewModel.currentSentenceIndex < viewModel.sentences.count - 1
     }
 
     // MARK: - アクション
 
     private func advanceToNext() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation {
             viewModel.nextSentence()
         }
     }
 
-    /// クリップボードからテキストをペースト
-    private func pasteFromClipboard() {
-        guard let pastedString = NSPasteboard.general.string(forType: .string),
-              !pastedString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return
+    private func handleFileImport(result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let selectedURL = urls.first else { return }
+            
+            // Security scoped resource for iOS
+            let accessed = selectedURL.startAccessingSecurityScopedResource()
+            defer { if accessed { selectedURL.stopAccessingSecurityScopedResource() } }
+            
+            let fileHandler = FileHandler()
+            do {
+                let content = try fileHandler.loadFileContent(from: selectedURL)
+                viewModel.processInputText(loadedText: content)
+            } catch {
+                viewModel.currentSentence = "Error loading file: \(error.localizedDescription)"
+            }
+        case .failure(let error):
+            viewModel.currentSentence = "File Selection Error: \(error.localizedDescription)"
         }
-        viewModel.processInputText(loadedText: pastedString)
     }
 
-    /// 全文の英文・日文をクリップボードにコピー
     private func copyAllSentences() {
-        // まず現在の翻訳を保存
         viewModel.saveCurrentTranslation()
 
         var lines: [String] = []
@@ -448,86 +509,65 @@ struct ContentView: View {
             if let translation = viewModel.translations[index] {
                 lines.append(translation)
             }
-            lines.append("") // 文間に空行
+            lines.append("")
         }
         let textToCopy = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
+        #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(textToCopy, forType: .string)
+        #elseif os(iOS)
+        UIPasteboard.general.string = textToCopy
+        #endif
 
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation {
             showCopiedFeedback = true
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation {
                 showCopiedFeedback = false
             }
         }
     }
 
-    private func openFilePicker() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.text, .pdf]
-
-        if panel.runModal() == .OK, let selectedURL = panel.url {
-            let fileHandler = FileHandler()
-            do {
-                let content = try fileHandler.loadFileContent(from: selectedURL)
-                viewModel.processInputText(loadedText: content)
-            } catch {
-                viewModel.currentSentence = "Error loading file: \(error.localizedDescription)"
-            }
-        }
-    }
-
     private func handleTranslationTrigger(_ newValue: String?) {
-        guard let textToTranslate = newValue, !textToTranslate.isEmpty else { return }
-
-        print("handleTranslationTrigger: Triggered for '\(textToTranslate.prefix(20))...'")
+        guard let textToTranslate = newValue, !textToTranslate.isEmpty else {
+            translationConfig = nil
+            return
+        }
         
-        if translationConfig == nil {
-            print("handleTranslationTrigger: Creating new configuration.")
-            let sourceLanguage = Locale.Language(identifier: "en-US")
-            let targetLanguage = Locale.Language(identifier: "ja-JP")
-            translationConfig = TranslationSession.Configuration(
+        print("handleTranslationTrigger: Changing config to trigger task...")
+        
+        let sourceLanguage = Locale.Language(identifier: "en-US")
+        let targetLanguage = Locale.Language(identifier: "ja-JP")
+        
+        // Resetting to ensure a fresh start
+        translationConfig = nil 
+        
+        // Delay slightly to ensure nil state is registered by SwiftUI
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.translationConfig = TranslationSession.Configuration(
                 source: sourceLanguage,
                 target: targetLanguage
             )
-        } else {
-            print("handleTranslationTrigger: Invalidating existing configuration to restart task.")
-            translationConfig?.invalidate()
         }
     }
 
     private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
         for provider in providers {
             if provider.canLoadObject(ofClass: URL.self) {
-                _ = provider.loadObject(ofClass: URL.self) { url, error in
-                    DispatchQueue.main.async { [weak viewModel] in
-                        guard let vm = viewModel else { return }
-
-                        if let error = error {
-                            vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
-                            return
-                        }
-                        guard let fileURL = url else {
-                            vm.currentSentence = "Error: Dropped item is not a valid file URL."
-                            return
-                        }
-
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    DispatchQueue.main.async {
+                        guard let fileURL = url else { return }
                         let accessed = fileURL.startAccessingSecurityScopedResource()
-                        defer {
-                            if accessed { fileURL.stopAccessingSecurityScopedResource() }
-                        }
+                        defer { if accessed { fileURL.stopAccessingSecurityScopedResource() } }
 
                         let fileHandler = FileHandler()
                         do {
                             let content = try fileHandler.loadFileContent(from: fileURL)
-                            vm.processInputText(loadedText: content)
+                            viewModel.processInputText(loadedText: content)
                         } catch {
-                            vm.currentSentence = "Error loading dropped file: \(error.localizedDescription)"
+                            viewModel.currentSentence = "Error: \(error.localizedDescription)"
                         }
                     }
                 }
@@ -536,22 +576,11 @@ struct ContentView: View {
         }
         return false
     }
+}
 
-    private func getResizedIcon() -> NSImage? {
-        guard let originalIcon = NSImage(named: "TraReadIcon") else { return nil }
-        let targetSize = NSSize(width: 128, height: 128)
-        let resizedIcon = NSImage(size: targetSize)
-        
-        resizedIcon.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        originalIcon.draw(in: NSRect(origin: .zero, size: targetSize),
-                          from: NSRect(origin: .zero, size: originalIcon.size),
-                          operation: .copy,
-                          fraction: 1.0)
-        resizedIcon.unlockFocus()
-        
-        return resizedIcon
-    }
+#Preview {
+    ContentView()
+        .environmentObject(TraReadViewModel())
 }
 
 #Preview {

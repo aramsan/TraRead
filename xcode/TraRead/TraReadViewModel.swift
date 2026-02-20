@@ -62,7 +62,23 @@ class TraReadViewModel: NSObject, ObservableObject {
         if let synthesizer = speechSynthesizer {
             synthesizer.delegate = self
         }
+        
+        setupAudioSession() // Configure audio session for iOS
         print("TraReadViewModel: Initialized.")
+    }
+
+    private func setupAudioSession() {
+        #if os(iOS)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            // .playback category allows sound even in silent mode
+            try session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+            try session.setActive(true)
+            print("TraReadViewModel: AVAudioSession configured successfully.")
+        } catch {
+            print("TraReadViewModel: Failed to configure AVAudioSession: \(error)")
+        }
+        #endif
     }
     
     // Processes the input text, splits it into sentences, and updates the UI.
@@ -111,6 +127,7 @@ class TraReadViewModel: NSObject, ObservableObject {
     // Speaks the current sentence.
     func speakCurrentSentence() {
         print("speakCurrentSentence: Starting for '\(currentSentence)'")
+        setupAudioSession() // Ensure session is active before speech
         if let synthesizer = speechSynthesizer {
             if synthesizer.isSpeaking {
                 synthesizer.stopSpeaking(at: .immediate)
@@ -128,6 +145,7 @@ class TraReadViewModel: NSObject, ObservableObject {
     // Speaks the current Japanese translation.
     func speakJapaneseTranslation() {
         print("speakJapaneseTranslation: Starting for '\(japaneseTranslation)'")
+        setupAudioSession() // Ensure session is active before speech
         if let synthesizer = speechSynthesizer, !japaneseTranslation.isEmpty {
             if synthesizer.isSpeaking {
                 synthesizer.stopSpeaking(at: .immediate)
