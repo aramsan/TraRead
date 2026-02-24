@@ -1,6 +1,7 @@
 import XCTest
 @testable import TraRead
 
+@MainActor
 class TraReadViewModelTests: XCTestCase {
 
     var viewModel: TraReadViewModel!
@@ -206,5 +207,37 @@ class TraReadViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.currentSentenceIndex, 0)
         XCTAssertEqual(viewModel.currentSentence, "New single sentence.")
         XCTAssertEqual(viewModel.japaneseTranslation, "")
+    }
+
+    // MARK: - テキスト再構成テスト
+
+    func testProcessInputText_withFragmentedText_reconstructsSentences() {
+        // PDF等でありがちな、不自然な位置での改行を含むテキスト
+        let fragmentedText = "This sentence\nwas broken\nby lines. And another\none\nhere."
+        viewModel.processInputText(loadedText: fragmentedText)
+        
+        XCTAssertEqual(viewModel.sentences.count, 2)
+        XCTAssertEqual(viewModel.sentences[0], "This sentence was broken by lines.")
+        XCTAssertEqual(viewModel.sentences[1], "And another one here.")
+    }
+
+    func testReconstructText_preservesParagraphs() {
+        let textWithParagraphs = """
+        This is the first paragraph
+        with a line break inside.
+
+        This is the second paragraph.
+        It has two sentences.
+        """
+        viewModel.processInputText(loadedText: textWithParagraphs)
+        
+        // 分割される文の数を確認
+        // 1. This is the first paragraph with a line break inside.
+        // 2. This is the second paragraph.
+        // 3. It has two sentences.
+        XCTAssertEqual(viewModel.sentences.count, 3)
+        XCTAssertEqual(viewModel.sentences[0], "This is the first paragraph with a line break inside.")
+        XCTAssertEqual(viewModel.sentences[1], "This is the second paragraph.")
+        XCTAssertEqual(viewModel.sentences[2], "It has two sentences.")
     }
 }

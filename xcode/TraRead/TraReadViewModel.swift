@@ -18,6 +18,7 @@ enum SpeakingLanguage: String { // Changed to String for easy printing
     case none
 }
 
+@MainActor
 class TraReadViewModel: NSObject, ObservableObject {
     @Published var inputText: String = ""
     @Published var currentSentence: String = "Welcome to TraRead! Enter your text above to begin."
@@ -104,10 +105,13 @@ class TraReadViewModel: NSObject, ObservableObject {
             return
         }
 
-        tokenizer.string = inputText
+        // Pre-process text to reconstruct fragmented sentences (PDF/Copy-Paste fix)
+        let cleanedText = reconstructText(inputText)
+        
+        tokenizer.string = cleanedText
         // NLTokenizer doesn't directly return a simple array, so we enumerate
-        tokenizer.enumerateTokens(in: inputText.startIndex..<inputText.endIndex) { tokenRange, _ in
-            let sentence = String(inputText[tokenRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        tokenizer.enumerateTokens(in: cleanedText.startIndex..<cleanedText.endIndex) { tokenRange, _ in
+            let sentence = String(cleanedText[tokenRange]).trimmingCharacters(in: .whitespacesAndNewlines)
             if !sentence.isEmpty {
                 self.sentences.append(sentence)
             }
@@ -219,6 +223,25 @@ class TraReadViewModel: NSObject, ObservableObject {
         translations = [:]
     }
 
+    private func reconstructText(_ text: String) -> String {
+        // 1. 段落（空行を含む2つ以上の連続した改行）を抽出
+        let paragraphSeparator = "\n\n"
+        let paragraphs = text.components(separatedBy: CharacterSet.newlines.union(.whitespaces).symmetricDifference(.newlines))
+            .joined(separator: "\n")
+            .split(separator: #/\n{2,}/#)
+        
+        let cleanedParagraphs = paragraphs.map { paragraph in
+            // 各段落内の不要な改行をスペースに置換
+            let joined = paragraph.replacingOccurrences(of: "\n", with: " ")
+            // 連続する空白を1つに正規化
+            let components = joined.components(separatedBy: .whitespacesAndNewlines)
+            return components.filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        
+        // 2. 段落をダブル改行で繋ぎ直す
+        return cleanedParagraphs.joined(separator: paragraphSeparator)
+    }
+
     /// 現在の文の翻訳を保存する
     func saveCurrentTranslation() {
         if !japaneseTranslation.isEmpty {
@@ -228,7 +251,7 @@ class TraReadViewModel: NSObject, ObservableObject {
 }
 
 // MARK: - AVSpeechSynthesizerDelegate
-extension TraReadViewModel: AVSpeechSynthesizerDelegate {
+extension TraReadViewModel: @preconcurrency AVSpeechSynthesizerDelegate {
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         // This delegate method will only be called if speechSynthesizer was initialized
         print("speechSynthesizer:didFinish: Speech finished. currentSpeakingLanguage: \(currentSpeakingLanguage)")
